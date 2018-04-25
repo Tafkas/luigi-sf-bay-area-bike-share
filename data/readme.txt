@@ -1,0 +1,1 @@
+This folder contains the San Francisco bike share data. You can download the data from https://www.kaggle.com/benhamner/sf-bay-area-bike-share/data.
