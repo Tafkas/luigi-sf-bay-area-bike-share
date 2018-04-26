@@ -2,8 +2,8 @@ import os
 import time
 
 import luigi
-from luigi.contrib.postgres import PostgresTarget
 import psycopg2
+from luigi.contrib.postgres import PostgresTarget
 
 HOST = 'localhost'
 DATABASE = 'sfbike'
@@ -37,8 +37,7 @@ class InitialTask(luigi.Task):
         return False
 
 
-class CreateDatabaseTables(luigi.Task):
-    """Creates the database structure"""
+class LoadStationData(luigi.Task):
 
     def requires(self):
         return InitialTask()
@@ -53,31 +52,16 @@ class CreateDatabaseTables(luigi.Task):
                                 host=HOST,
                                 password=PASSWORD)
         cur = conn.cursor()
-
         sql = self.query()
         cur.execute(sql)
-        conn.commit()
-        conn.close()
 
+        stations = []
+        with open('data/station.csv', 'r') as f:
+            next(f)
+            for line in f:
+                stations.append(tuple([x.strip() for x in line.split(',')]))
+        cur.executemany("""INSERT INTO station VALUES (%s,%s,%s,%s,%s,%s,%s)""", stations)
 
-class CreateStationTable(luigi.Task):
-
-    def requires(self):
-        return InitialTask()
-
-    def query(self):
-        with open('queries/create-station-table.sql', 'r') as f:
-            return f.read()
-
-    def run(self):
-        conn = psycopg2.connect(dbname=DATABASE,
-                                user=USER,
-                                host=HOST,
-                                password=PASSWORD)
-        cur = conn.cursor()
-
-        sql = self.query()
-        cur.execute(sql)
         conn.commit()
         conn.close()
 
@@ -86,7 +70,7 @@ class CreateStationTable(luigi.Task):
                               password=PASSWORD, table='station', update_id='id')
 
 
-class CreateStatusTable(luigi.Task):
+class LoadStatusData(luigi.Task):
 
     def requires(self):
         return InitialTask()
@@ -101,18 +85,25 @@ class CreateStatusTable(luigi.Task):
                                 host=HOST,
                                 password=PASSWORD)
         cur = conn.cursor()
-
         sql = self.query()
         cur.execute(sql)
+
+        statuses = []
+        with open('data/status10k.csv', 'r') as f:
+            next(f)
+            for line in f:
+                statuses.append(tuple([x.strip() for x in line.split(',')]))
+        cur.executemany("""INSERT INTO status VALUES (%s,%s,%s,%s)""", statuses)
+
         conn.commit()
         conn.close()
 
     def output(self):
         return PostgresTarget(host=HOST, database=DATABASE, user=USER,
-                              password=PASSWORD, table='status', update_id='id')
+                              password=PASSWORD, table='status', update_id='station')
 
 
-class CreateWeatherTable(luigi.Task):
+class LoadWeatherData(luigi.Task):
 
     def requires(self):
         return InitialTask()
@@ -127,18 +118,27 @@ class CreateWeatherTable(luigi.Task):
                                 host=HOST,
                                 password=PASSWORD)
         cur = conn.cursor()
-
         sql = self.query()
         cur.execute(sql)
+
+        weather = []
+        with open('data/weather.csv', 'r') as f:
+            next(f)
+            for line in f:
+                weather.append(tuple([x.strip() for x in line.split(',')]))
+        weather = [None if len(x) == 0 else x for x in weather]
+        cur.executemany("""INSERT INTO weather VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""", weather)
+
+
         conn.commit()
         conn.close()
 
     def output(self):
         return PostgresTarget(host=HOST, database=DATABASE, user=USER,
-                              password=PASSWORD, table='weather', update_id='id')
+                              password=PASSWORD, table='weather', update_id='date')
 
 
-class CreateTripTable(luigi.Task):
+class LoadTripData(luigi.Task):
 
     def requires(self):
         return InitialTask()
@@ -153,9 +153,15 @@ class CreateTripTable(luigi.Task):
                                 host=HOST,
                                 password=PASSWORD)
         cur = conn.cursor()
-
         sql = self.query()
         cur.execute(sql)
+
+        trips = []
+        with open('data/trip10k.csv', 'r') as f:
+            next(f)
+            for line in f:
+                trips.append(tuple([x.strip() for x in line.split(',')]))
+        cur.executemany("""INSERT INTO trip VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""", trips)
         conn.commit()
         conn.close()
 
@@ -164,43 +170,11 @@ class CreateTripTable(luigi.Task):
                               password=PASSWORD, table='trip', update_id='id')
 
 
-class ExtractStations(luigi.Task):
-    """Extracts the bike station data and stores it in the database"""
-    host = 'localhost'
-    database = 'sfbike'
-    user = 'stade'
-    password = ''
-    table = ''
-
-    def requires(self):
-        return [CreateStationTable()]
-
-    def run(self):
-        stations = []
-        with open('data/station.csv', 'r') as f:
-            next(f)
-            for line in f:
-                stations.append(tuple([x.strip() for x in line.split(',')]))
-
-        conn = psycopg2.connect(dbname=self.database,
-                                user=self.user,
-                                host=self.host,
-                                password=self.password)
-        cur = conn.cursor()
-        cur.executemany("""INSERT INTO station VALUES (%s,%s,%s,%s,%s,%s,%s)""", stations)
-        conn.commit()
-        conn.close()
-
-    def output(self):
-        return PostgresTarget(host=HOST, database=DATABASE, user=USER,
-                              password=PASSWORD, table='stations', update_id='id')
-
-
 class FinishPipeline(luigi.Task):
     """Finishes up the pipeline and removes temporary files"""
 
     def requires(self):
-        return [ExtractStations(), CreateWeatherTable(), CreateStatusTable(), CreateTripTable()]
+        return [LoadStationData(), LoadWeatherData(), LoadStatusData(), LoadTripData()]
 
     def run(self):
         tmp_files = ['/tmp/luigi/pipeline', '/tmp/luigi/tables']

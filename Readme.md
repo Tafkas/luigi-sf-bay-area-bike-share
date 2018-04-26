@@ -6,7 +6,7 @@ This repository contains code to import the anonymized bike trip data from Augus
 ## Getting Started
 
 - Download the data from the [Kaggle website](https://www.kaggle.com/benhamner/sf-bay-area-bike-share/data) and put into `data`.
-- Install Python dependencies with Pipenv: `pipenv install Pipfile.lock`
+- Install Python dependencies with Pipenv: `pipenv install`
 - Create the Postgres Database with `make create-postgres-db`
 - Run the luigi daemon with `luigid`
 - Run the pipeline with `python import_sfbike.py`
